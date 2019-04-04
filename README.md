@@ -37,30 +37,43 @@ Then, trimmed reads are aligned to the reference human genome build hg19/GRCh37,
 # 2.1 Generate genome indexes files
 $BOWTIE2/bowtie2-build /mnt/typhon/references/Homo_sapiens/UCSC/hg19/Sequence/WholeGenomeFasta/genome.fa REF/hg19.example
 # 2.2 Mapping reads to the genome
-for file in /mnt/hydra/ubs/shared/users/Sandra/merkel_polyomavirus/res/trimmed/*_1_val_1.fq.gz; do
-  base=$(basename $file "_1_val_1.fq.gz")
-  echo aligning $base"_1_val_1.fq.gz" $base"_2_val_2.fq.gz"
-  $BOWTIE2/bowtie2 -D 15 -R 2 -N 0 -L 22 -i S,1,1.15 -p 10 -x $INDEX -1 $TRIMMED/$base"_1_val_1.fq.gz" -2 $TRIMMED/$base"_2_val_2.fq.gz" | $SAMTOOLS view -bS - | $SAMTOOLS sort -m 1000000000 -O BAM -o $ALIGNMENTS/$base".sorted.bam"
+for file in $FILES/*_1.fastq.gz; do
+  base=$(basename $file "_1.fastq.gz")
+  echo aligning $base
+  $BOWTIE2/bowtie2 -D 15 -R 2 -N 0 -L 22 -i S,1,1.15 -p 10 -x $INDEX -1 $FILES/$base"_1.fastq.gz" -2 $FILES/$base"_2.fastq.gz" | $SAMTOOLS view -bS - | $SAMTOOLS sort -m 1000000000 -O BAM -o $ALIGNMENTS/$base".sorted.bam"
 done
+
 ```
 ### 3. Retrieve unmapped reads
 From this first alignment, unmapped reads are selected with Samtools (v1.3.1).
 ```bash
-for file in /mnt/hydra/ubs/shared/users/Sandra/merkel_polyomavirus/res/alignments/*.bam; do
+for file in $ALIGNMENTS/*.sorted.bam; do
   base=$(basename $file ".sorted.bam")
-  echo unmapped reads $base
+  echo retrieving unmapped reads $base
   # 1- An unmapped read whose mate is mapped
-  $SAMTOOLS view -u -h -f 4 -F 264 $file > $UNMAPPED/tmps1.bam
+  $SAMTOOLS view -@ 7 -u -h -f 4 -F 264 $file > $UNMAPPED/tmps1.bam
   # 2- A mapped read who’s mate is unmapped
-  $SAMTOOLS view -u -h -f 8 -F 260 $file > $UNMAPPED/tmps2.bam
+  $SAMTOOLS view -@ 7 -u -h -f 8 -F 260 $file > $UNMAPPED/tmps2.bam
   # 3- Both reads of the pair are unmapped
-  $SAMTOOLS view -u -h -f 12 -F 256 $file > $UNMAPPED/tmps3.bam
+  $SAMTOOLS view -@ 7 -u -h -f 12 -F 256 $file > $UNMAPPED/tmps3.bam
   # 4- Merge
   $SAMTOOLS merge -u - tmps[123].bam | $SAMTOOLS sort -n - $UNMAPPED/$base"_unmapped_reads"
 done
 ```
 ### 4- Alignment 2 - against viral genome
+Retrieved unmapped reads are aligned against MCV genome (5,381 bp length, downloaded from the NCBI ─GenBank accession number EU375803─) with BWA (v0.7.15) ─alignment 2─. Finally, the number of reads aligned to virus is calculated, and an output is generated with the following information: Sample ID, MCV+/- status, and read counts in case of MCV+.
 ```bash
+#create index
+$BOWTIE2/bowtie2-build $INDEX/Genome_Polyomavirus_MCC350.fasta genome_merkel
+# alignment
+for file in $UNMAPPED/*_1.fastq.gz; do
+  base=$(basename $file "_1.fastq.gz")
+  echo aligning $base
+  $BOWTIE2/bowtie2 -D 15 -R 2 -N 0 -L 22 -i S,1,1.15 -p 10 -x $INDEX -1 $UNMAPPED/$base"_1.fastq.gz" -2 $UNMAPPED/$base"_2.fastq.gz" | $SAMTOOLS view -bS - | $SAMTOOLS sort -m 1000000000 -O BAM -o $VIRUS_ALIGN/$base".virus.all.bam"
+  $SAMTOOLS view -@ 7 -b -F 0x04 $VIRUS_ALIGN/$base".virus.all.bam" -o $VIRUS_MAPPED/$base".virus.mapped.bam"
+  $SAMTOOLS view -@ 7 $VIRUS_MAPPED/$base".virus.mapped.bam" | cut -f3 | sort | uniq -c | awk -v file=$base -F'\t' 'BEGIN{OFS="\t"}{print file,$1,$2}' >> $RES/virus.read.counts.txt
+done
+
 for file in /mnt/hydra/ubs/shared/users/Sandra/merkel_polyomavirus/res/alignments/unmapped/*_unmapped_reads.bam; do
   base=$(basename $file "_unmapped_reads.bam")
   $BWA aln -b $VIRUS/Genome_Polyomavirus_MCC350.fasta $file > $VIRUS_ALIGN/$base".virus.sai"
