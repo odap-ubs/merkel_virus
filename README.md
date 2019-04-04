@@ -68,4 +68,4 @@ for file in /mnt/hydra/ubs/shared/users/Sandra/merkel_polyomavirus/res/alignment
   $SAMTOOLS view -@ 10 -b -F 0x04 $VIRUS_ALIGN/$base".virus.all.bam" -o $VIRUS_MAPPED/$base".virus.mapped.bam"
   $SAMTOOLS view -@ 10 -b -f 0x04 $VIRUS_ALIGN/$base".virus.all.bam" -o $VIRUS_ALIGN/$base".virus.unmapped.bam"
 done
-``
+```
