@@ -37,10 +37,10 @@ Then, trimmed reads are aligned to the reference human genome build hg19/GRCh37,
 # 2.1 Generate genome indexes files
 $BOWTIE2/bowtie2-build /mnt/typhon/references/Homo_sapiens/UCSC/hg19/Sequence/WholeGenomeFasta/genome.fa REF/hg19.example
 # 2.2 Mapping reads to the genome
-for file in $FILES/*_1.fastq.gz; do
+for file in $TRIMMED/*_1.fastq.gz; do
   base=$(basename $file "_1.fastq.gz")
   echo aligning $base
-  $BOWTIE2/bowtie2 -D 15 -R 2 -N 0 -L 22 -i S,1,1.15 -p 10 -x $INDEX -1 $FILES/$base"_1.fastq.gz" -2 $FILES/$base"_2.fastq.gz" |  $SAMTOOLS view -bS - | $SAMTOOLS sort -m 1000000000 -O BAM -o $ALIGNMENTS/$base".sorted.bam"
+  $BOWTIE2/bowtie2 -D 15 -R 2 -N 0 -L 22 -i S,1,1.15 -p 10 -x $INDEX -1 $TRIMMED/$base"_1_val_1.fq.gz" -2 $TRIMMED/$base"_1_val_1.fq.gz" |  $SAMTOOLS view -bS - | $SAMTOOLS sort -m 1000000000 -O BAM -o $ALIGNMENTS/$base".sorted.bam"
 done
 
 ```
