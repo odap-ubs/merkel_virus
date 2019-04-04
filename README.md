@@ -18,14 +18,14 @@ Requires:
 The Raw data from the WES fastq files are first trimmed if necessary with TrimGalore (v0.4.0).
 ```bash
 # FastQC
-fastqc C1VTNACXX_4_9ss_1.fastq.gz
-fastqc C1VTNACXX_4_9ss_2.fastq.gz
+fastqc $FASTQ/C1VTNACXX_4_9ss_1.fastq.gz
+fastqc $FASTQ/C1VTNACXX_4_9ss_2.fastq.gz
 
 firefox C1VTNACXX_4_9ss_1_fastqc.html
 firefox C1VTNACXX_4_9ss_2.fastq.html
 
 # Trimming to remove bad quality 
-for file in /mnt/hydra/ubs/shared/users/Sandra/IDIVAL/*_1.fastq.gz; do 
+for file in $FASTQ/*_1.fastq.gz; do 
   base=$(basename $file "_1.fastq.gz")
   $TRIMG/trim_galore --quality 30 --path_to_cutadapt $CUTADAPT --paired --trim1 -o $TRIMMED $FASTQ"/"$base"_1.fastq.gz" $FASTQ"/"$base"_2.fastq.gz"
   echo trimming $base"_1.fastq.gz" $base"_2.fastq.gz" 
@@ -40,7 +40,7 @@ $BOWTIE2/bowtie2-build /mnt/typhon/references/Homo_sapiens/UCSC/hg19/Sequence/Wh
 for file in $FILES/*_1.fastq.gz; do
   base=$(basename $file "_1.fastq.gz")
   echo aligning $base
-  $BOWTIE2/bowtie2 -D 15 -R 2 -N 0 -L 22 -i S,1,1.15 -p 10 -x $INDEX -1 $FILES/$base"_1.fastq.gz" -2 $FILES/$base"_2.fastq.gz" | $SAMTOOLS view -bS - | $SAMTOOLS sort -m 1000000000 -O BAM -o $ALIGNMENTS/$base".sorted.bam"
+  $BOWTIE2/bowtie2 -D 15 -R 2 -N 0 -L 22 -i S,1,1.15 -p 10 -x $INDEX -1 $FILES/$base"_1.fastq.gz" -2 $FILES/$base"_2.fastq.gz" |  $SAMTOOLS view -bS - | $SAMTOOLS sort -m 1000000000 -O BAM -o $ALIGNMENTS/$base".sorted.bam"
 done
 
 ```
@@ -57,28 +57,18 @@ for file in $ALIGNMENTS/*.sorted.bam; do
   # 3- Both reads of the pair are unmapped
   $SAMTOOLS view -@ 7 -u -h -f 12 -F 256 $file > $UNMAPPED/tmps3.bam
   # 4- Merge
-  $SAMTOOLS merge -u - tmps[123].bam | $SAMTOOLS sort -n - $UNMAPPED/$base"_unmapped_reads"
+  $SAMTOOLS merge -u - $UNMAPPED/tmps[123].bam | $SAMTOOLS sort -n -m 1000000000 -O BAM -o $UNMAPPED/$base"_unmapped_reads.bam"
 done
 ```
 ### 4- Alignment 2 - against viral genome
 Retrieved unmapped reads are aligned against MCV genome (5,381 bp length, downloaded from the NCBI ─GenBank accession number EU375803─) with BWA (v0.7.15) ─alignment 2─. Finally, the number of reads aligned to virus is calculated, and an output is generated with the following information: Sample ID, MCV+/- status, and read counts in case of MCV+.
 ```bash
-#create index
-$BOWTIE2/bowtie2-build $INDEX/Genome_Polyomavirus_MCC350.fasta genome_merkel
-# alignment
-for file in $UNMAPPED/*_1.fastq.gz; do
-  base=$(basename $file "_1.fastq.gz")
-  echo aligning $base
-  $BOWTIE2/bowtie2 -D 15 -R 2 -N 0 -L 22 -i S,1,1.15 -p 10 -x $INDEX -1 $UNMAPPED/$base"_1.fastq.gz" -2 $UNMAPPED/$base"_2.fastq.gz" | $SAMTOOLS view -bS - | $SAMTOOLS sort -m 1000000000 -O BAM -o $VIRUS_ALIGN/$base".virus.all.bam"
-  $SAMTOOLS view -@ 7 -b -F 0x04 $VIRUS_ALIGN/$base".virus.all.bam" -o $VIRUS_MAPPED/$base".virus.mapped.bam"
-  $SAMTOOLS view -@ 7 $VIRUS_MAPPED/$base".virus.mapped.bam" | cut -f3 | sort | uniq -c | awk -v file=$base -F'\t' 'BEGIN{OFS="\t"}{print file,$1,$2}' >> $RES/virus.read.counts.txt
-done
-
-for file in /mnt/hydra/ubs/shared/users/Sandra/merkel_polyomavirus/res/alignments/unmapped/*_unmapped_reads.bam; do
+  for file in $UNMAPPED/*_unmapped_reads.bam; do
   base=$(basename $file "_unmapped_reads.bam")
   $BWA aln -b $VIRUS/Genome_Polyomavirus_MCC350.fasta $file > $VIRUS_ALIGN/$base".virus.sai"
   $BWA samse $VIRUS/Genome_Polyomavirus_MCC350.fasta $VIRUS_ALIGN/$base".virus.sai" $file | $SAMTOOLS view - -bS -o $VIRUS_ALIGN/$base".virus.all.bam"
   $SAMTOOLS view -@ 10 -b -F 0x04 $VIRUS_ALIGN/$base".virus.all.bam" -o $VIRUS_MAPPED/$base".virus.mapped.bam"
   $SAMTOOLS view -@ 10 -b -f 0x04 $VIRUS_ALIGN/$base".virus.all.bam" -o $VIRUS_ALIGN/$base".virus.unmapped.bam"
+  $SAMTOOLS view $VIRUS_MAPPED/$base".virus.mapped.bam" | cut -f3 | sort | uniq -c | awk -v file=$base -F'\t' 'BEGIN{OFS="\t"}{print file,$1,$2}' >> $RES/virus.read.counts.txt
 done
 ```
